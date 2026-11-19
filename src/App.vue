@@ -7,6 +7,7 @@ import CaptureModal from './components/CaptureModal.vue';
 import LightboxModal from './components/LightboxModal.vue';
 import BackupModal from './components/BackupModal.vue';
 import {
+  clearAllPhotos,
   deletePhotoById,
   getAllPhotos,
   importPhotosToDb,
@@ -87,6 +88,22 @@ async function handleImported({ items, mode }) {
   notify(`已${mode === 'replace' ? '覆蓋還原' : '合併匯入'} ${items.length} 筆照片紀錄`);
 }
 
+async function handleClearAll() {
+  await clearAllPhotos();
+  for (const p of photos.value) {
+    if (p.objectUrl && p.objectUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(p.objectUrl);
+    }
+  }
+  photos.value = [];
+  localStorage.removeItem(SEEDED_KEY);
+  notify('已刪除全部照片紀錄');
+}
+
+async function handleSeedSamples() {
+  await seedSamplesAtCurrentLocation();
+}
+
 async function switchTab(tab) {
   activeTab.value = tab;
   if (tab === 'map') {
@@ -104,8 +121,7 @@ async function handleViewOnMap(photo) {
 
 const SEEDED_KEY = 'cat-map-seeded-v1';
 
-async function seedFirstTimeSampleIfNeeded() {
-  if (photos.value.length > 0 || localStorage.getItem(SEEDED_KEY)) return;
+async function seedSamplesAtCurrentLocation() {
   localStorage.setItem(SEEDED_KEY, '1');
 
   try {
@@ -164,21 +180,37 @@ async function seedFirstTimeSampleIfNeeded() {
       };
 
       await savePhoto(record);
-      photos.value.push({
+      const idx = photos.value.findIndex((p) => p.id === record.id);
+      const hydrated = {
         ...record,
         objectUrl: URL.createObjectURL(record.imageBlob),
-      });
-      if (!firstRecord) firstRecord = record;
+      };
+      if (idx >= 0) {
+        if (photos.value[idx].objectUrl?.startsWith('blob:')) {
+          URL.revokeObjectURL(photos.value[idx].objectUrl);
+        }
+        photos.value.splice(idx, 1, hydrated);
+      } else {
+        photos.value.unshift(hydrated);
+      }
+      if (!firstRecord) firstRecord = hydrated;
     }
 
     if (firstRecord) {
+      activeTab.value = 'map';
       await nextTick();
+      mapRef.value?.invalidateSize();
       mapRef.value?.focusPhoto(firstRecord);
       notify('已為你在附近建立 2 筆範例貓咪紀錄！');
     }
   } catch {
     // Sample seeding is best-effort
   }
+}
+
+async function seedFirstTimeSampleIfNeeded() {
+  if (photos.value.length > 0 || localStorage.getItem(SEEDED_KEY)) return;
+  await seedSamplesAtCurrentLocation();
 }
 
 onMounted(async () => {
@@ -282,7 +314,14 @@ onUnmounted(() => {
       @edit="(p) => captureRef?.openEdit(p)"
       @delete="handleDeletePhoto"
     />
-    <BackupModal ref="backupRef" :photos="photos" @imported="handleImported" @notify="notify" />
+    <BackupModal
+      ref="backupRef"
+      :photos="photos"
+      @imported="handleImported"
+      @clear-all="handleClearAll"
+      @seed-samples="handleSeedSamples"
+      @notify="notify"
+    />
   </div>
 </template>
 

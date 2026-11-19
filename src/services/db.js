@@ -59,6 +59,16 @@ export async function deletePhotoById(id) {
   });
 }
 
+export async function clearAllPhotos() {
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 export async function importPhotosToDb(photos, mode = 'merge') {
   await requestPersistence();
   const db = await openDatabase();

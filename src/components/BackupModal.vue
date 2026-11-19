@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue';
-import { CloudDownload, CloudUpload, Download, Upload, X } from 'lucide-vue-next';
+import { CloudDownload, CloudUpload, Download, Sparkles, Trash2, Upload, X } from 'lucide-vue-next';
 import { useDialogLightDismiss } from '../composables/useDialog';
 import { buildBackupZipBlob, parseBackupZip, saveZipWithPicker } from '../services/backupUtils';
 import {
@@ -18,23 +18,43 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['imported', 'notify']);
+const emit = defineEmits(['imported', 'clear-all', 'seed-samples', 'notify']);
 
 const dialogRef = ref(null);
 const importInputRef = ref(null);
 const importMode = ref('merge');
 const busy = ref(false);
+const confirmClear = ref(false);
 const googleClientId = ref(getSavedGoogleClientId());
 
-useDialogLightDismiss(dialogRef);
+useDialogLightDismiss(dialogRef, () => {
+  confirmClear.value = false;
+});
 
 function open() {
+  confirmClear.value = false;
   googleClientId.value = getSavedGoogleClientId();
   dialogRef.value?.showModal();
 }
 
 function close() {
+  confirmClear.value = false;
   dialogRef.value?.close();
+}
+
+function handleClearAll() {
+  if (!confirmClear.value) {
+    confirmClear.value = true;
+    return;
+  }
+  confirmClear.value = false;
+  emit('clear-all');
+  close();
+}
+
+function handleSeedSamples() {
+  emit('seed-samples');
+  close();
 }
 
 async function handleLocalExport() {
@@ -218,6 +238,34 @@ defineExpose({ open });
             </button>
           </div>
         </section>
+
+        <section class="card-section danger-section">
+          <h3 class="section-title">3. 資料管理與範例</h3>
+          <p class="section-desc">
+            可清除本機所有照片紀錄，或在目前位置附近重新載入 2 筆範例貓咪照片。
+          </p>
+          <div class="btn-row">
+            <button
+              type="button"
+              class="btn-secondary"
+              :disabled="busy"
+              @click="handleSeedSamples"
+            >
+              <Sparkles :size="16" />
+              載入範例貓咪
+            </button>
+            <button
+              type="button"
+              class="btn-danger"
+              :class="{ confirm: confirmClear }"
+              :disabled="busy || photos.length === 0"
+              @click="handleClearAll"
+            >
+              <Trash2 :size="16" />
+              {{ confirmClear ? '確定刪除全部紀錄？' : '刪除全部紀錄' }}
+            </button>
+          </div>
+        </section>
       </div>
     </div>
   </dialog>
@@ -389,5 +437,31 @@ defineExpose({ open });
 .btn-secondary {
   background: var(--surface-muted);
   color: var(--text);
+}
+
+.btn-danger {
+  flex: 1 1 180px;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #fee2e2;
+  color: var(--danger);
+  cursor: pointer;
+}
+
+.btn-danger.confirm {
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>
