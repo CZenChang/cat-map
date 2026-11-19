@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { MapPin, Maximize2, Search, Star } from 'lucide-vue-next';
+import { MapPin, Maximize2, Search, Star, Trash2 } from 'lucide-vue-next';
 import { formatDateTime } from '../services/geoUtils';
 
 const props = defineProps({
@@ -10,10 +10,20 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['view-on-map', 'open-lightbox', 'open-capture']);
+const emit = defineEmits(['view-on-map', 'open-lightbox', 'open-capture', 'delete-photo']);
 
 const searchQuery = ref('');
 const sortBy = ref('date-desc');
+const confirmDeleteId = ref('');
+
+function handleDeleteClick(id) {
+  if (confirmDeleteId.value !== id) {
+    confirmDeleteId.value = id;
+    return;
+  }
+  confirmDeleteId.value = '';
+  emit('delete-photo', id);
+}
 
 const filteredAndSorted = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
@@ -125,6 +135,16 @@ const filteredAndSorted = computed(() => {
             >
               <Maximize2 :size="15" />
               全覽照片
+            </button>
+            <button
+              type="button"
+              class="btn-action"
+              :class="confirmDeleteId === photo.id ? 'btn-delete-confirm' : 'btn-delete'"
+              :aria-label="confirmDeleteId === photo.id ? `確定刪除 ${photo.name}` : `刪除 ${photo.name}`"
+              @click="handleDeleteClick(photo.id)"
+            >
+              <Trash2 :size="15" />
+              {{ confirmDeleteId === photo.id ? '確定？' : '' }}
             </button>
           </div>
         </div>
@@ -292,7 +312,7 @@ const filteredAndSorted = computed(() => {
 .card-actions {
   margin-top: auto;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr auto;
   gap: 8px;
 }
 
@@ -317,6 +337,18 @@ const filteredAndSorted = computed(() => {
 .btn-full {
   background: var(--surface-muted);
   color: var(--text);
+}
+
+.btn-delete {
+  background: #fee2e2;
+  color: var(--danger);
+  padding: 9px 11px;
+}
+
+.btn-delete-confirm {
+  background: var(--danger);
+  color: #fff;
+  padding: 9px 11px;
 }
 
 .empty-state {

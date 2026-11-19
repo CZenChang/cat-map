@@ -233,6 +233,7 @@ onUnmounted(() => {
           @view-on-map="handleViewOnMap"
           @open-lightbox="(p) => lightboxRef?.open(p)"
           @open-capture="captureRef?.startCapture()"
+          @delete-photo="handleDeletePhoto"
         />
       </div>
     </main>
@@ -268,7 +269,12 @@ onUnmounted(() => {
       {{ toastMsg }}
     </div>
 
-    <CaptureModal ref="captureRef" @save="handleSavePhoto" @notify="notify" />
+    <CaptureModal
+      ref="captureRef"
+      @save="handleSavePhoto"
+      @delete="handleDeletePhoto"
+      @notify="notify"
+    />
     <LightboxModal
       ref="lightboxRef"
       :photos="photos"

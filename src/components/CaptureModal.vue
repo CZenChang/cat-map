@@ -1,11 +1,11 @@
 <script setup>
 import { nextTick, onUnmounted, ref } from 'vue';
 import L from 'leaflet';
-import { Camera, MapPin, RefreshCw, Star, X } from 'lucide-vue-next';
+import { Camera, MapPin, RefreshCw, Star, Trash2, X } from 'lucide-vue-next';
 import { processCapturedImage } from '../services/imageUtils';
 import { formatDateTime, getCurrentPosition, reverseGeocode } from '../services/geoUtils';
 
-const emit = defineEmits(['save', 'notify']);
+const emit = defineEmits(['save', 'delete', 'notify']);
 
 const dialogRef = ref(null);
 const fileInputRef = ref(null);
@@ -15,6 +15,7 @@ const miniMapRef = ref(null);
 const step = ref('form'); // 'webcam' | 'form'
 const isEditing = ref(false);
 const editingId = ref('');
+const confirmDelete = ref(false);
 const saving = ref(false);
 const locating = ref(false);
 const webcamError = ref('');
@@ -205,6 +206,7 @@ function onMobileFileChange(event) {
 async function openEdit(photo) {
   isEditing.value = true;
   editingId.value = photo.id;
+  confirmDelete.value = false;
   step.value = 'form';
 
   revokePreview();
@@ -225,9 +227,21 @@ async function openEdit(photo) {
 }
 
 function closeModal() {
+  confirmDelete.value = false;
   stopWebcam();
   destroyMiniMap();
   dialogRef.value?.close();
+}
+
+function handleDelete() {
+  if (!isEditing.value || !editingId.value) return;
+  if (!confirmDelete.value) {
+    confirmDelete.value = true;
+    return;
+  }
+  const id = editingId.value;
+  closeModal();
+  emit('delete', id);
 }
 
 async function submitForm() {
@@ -385,6 +399,16 @@ onUnmounted(() => {
         </div>
 
         <footer class="form-footer">
+          <button
+            v-if="isEditing"
+            type="button"
+            class="btn-delete"
+            :class="{ confirm: confirmDelete }"
+            @click="handleDelete"
+          >
+            <Trash2 :size="15" />
+            {{ confirmDelete ? '確定刪除？' : '刪除' }}
+          </button>
           <button type="button" class="btn-secondary" @click="closeModal">取消</button>
           <button type="submit" class="btn-primary" :disabled="saving">
             {{ saving ? '儲存中...' : isEditing ? '儲存變更' : '儲存紀錄' }}
@@ -626,6 +650,26 @@ onUnmounted(() => {
 .btn-secondary {
   background: var(--surface-muted);
   color: var(--text);
+}
+
+.btn-delete {
+  margin-right: auto;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #fee2e2;
+  color: var(--danger);
+  cursor: pointer;
+}
+
+.btn-delete.confirm {
+  background: var(--danger);
+  color: #fff;
 }
 
 .spinning {
