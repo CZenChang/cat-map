@@ -109,43 +109,73 @@ async function seedFirstTimeSampleIfNeeded() {
   localStorage.setItem(SEEDED_KEY, '1');
 
   try {
-    const res = await fetch('./sample-cat.jpg');
-    if (!res.ok) return;
-    const blob = await res.blob();
-    const { imageBlob, thumbDataUrl } = await processCapturedImage(blob);
-
-    let lat = 25.033964;
-    let lng = 121.564468;
+    let baseLat = 25.033964;
+    let baseLng = 121.564468;
     try {
       const pos = await getCurrentPosition({ timeout: 5000 });
-      lat = Number((pos.lat + 0.0005).toFixed(6));
-      lng = Number((pos.lng + 0.0005).toFixed(6));
+      baseLat = pos.lat;
+      baseLng = pos.lng;
     } catch {
       // Fallback to default center if GPS is unavailable
     }
 
-    const placeName = (await reverseGeocode(lat, lng)) || '你附近的巷弄（範例地點）';
-    const sampleRecord = {
-      id: 'sample-cat-welcome',
-      name: '巷口小橘貓（範例）',
-      rating: 5,
-      note: '這是一筆自動建立的範例紀錄！你可以點擊「全覽照片」或「編輯」，也可以按下方的「拍照記錄」新增自己的照片。',
-      createdAt: new Date().toISOString(),
-      lat,
-      lng,
-      placeName,
-      imageBlob,
-      thumbDataUrl,
-    };
+    const sampleDefs = [
+      {
+        id: 'sample-cat-welcome',
+        file: './sample-cat.jpg',
+        name: '巷口小橘貓（範例）',
+        rating: 5,
+        note: '這是一筆自動建立的範例紀錄！你可以點擊「全覽照片」或「編輯」，也可以按下方的「拍照記錄」新增自己的照片。',
+        lat: Number((baseLat + 0.0005).toFixed(6)),
+        lng: Number((baseLng + 0.0005).toFixed(6)),
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: 'sample-cat-azheng',
+        file: './sample-cat-2.jpg',
+        name: '皺臉虎斑貓（範例）',
+        rating: 5,
+        note: '開發阿政提供',
+        lat: Number((baseLat - 0.0004).toFixed(6)),
+        lng: Number((baseLng + 0.0006).toFixed(6)),
+        createdAt: new Date(Date.now() - 60_000).toISOString(),
+      },
+    ];
 
-    await savePhoto(sampleRecord);
-    photos.value.unshift({
-      ...sampleRecord,
-      objectUrl: URL.createObjectURL(sampleRecord.imageBlob),
-    });
-    await nextTick();
-    mapRef.value?.focusPhoto(sampleRecord);
-    notify('已為你在附近建立一筆範例貓咪紀錄！');
+    let firstRecord = null;
+    for (const def of sampleDefs) {
+      const res = await fetch(def.file);
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      const { imageBlob, thumbDataUrl } = await processCapturedImage(blob);
+      const placeName = (await reverseGeocode(def.lat, def.lng)) || '你附近的巷弄（範例地點）';
+
+      const record = {
+        id: def.id,
+        name: def.name,
+        rating: def.rating,
+        note: def.note,
+        createdAt: def.createdAt,
+        lat: def.lat,
+        lng: def.lng,
+        placeName,
+        imageBlob,
+        thumbDataUrl,
+      };
+
+      await savePhoto(record);
+      photos.value.push({
+        ...record,
+        objectUrl: URL.createObjectURL(record.imageBlob),
+      });
+      if (!firstRecord) firstRecord = record;
+    }
+
+    if (firstRecord) {
+      await nextTick();
+      mapRef.value?.focusPhoto(firstRecord);
+      notify('已為你在附近建立 2 筆範例貓咪紀錄！');
+    }
   } catch {
     // Sample seeding is best-effort
   }
