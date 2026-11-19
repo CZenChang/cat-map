@@ -75,7 +75,17 @@ async function initMiniMap() {
     maxZoom: 19,
   }).addTo(miniMap);
 
-  miniMarker = L.marker([lat.value, lng.value], { draggable: true }).addTo(miniMap);
+  const pinIcon = L.divIcon({
+    className: 'mini-map-pin',
+    iconSize: [32, 40],
+    iconAnchor: [16, 40],
+    html: `<svg viewBox="0 0 32 40" width="32" height="40" xmlns="http://www.w3.org/2000/svg">
+      <path d="M16 0C7.16 0 0 7.16 0 16c0 11.2 16 24 16 24s16-12.8 16-24C32 7.16 24.84 0 16 0z" fill="#ff7a45" stroke="#ffffff" stroke-width="2.5"/>
+      <circle cx="16" cy="15" r="5.5" fill="#ffffff"/>
+    </svg>`,
+  });
+
+  miniMarker = L.marker([lat.value, lng.value], { draggable: true, icon: pinIcon }).addTo(miniMap);
 
   const updateCoords = async (newLat, newLng) => {
     lat.value = Number(newLat.toFixed(6));
