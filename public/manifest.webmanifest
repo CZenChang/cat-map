@@ -1,0 +1,17 @@
+{
+  "name": "Cat-Map 拍照地點地圖",
+  "short_name": "Cat-Map",
+  "description": "即時拍照記錄地點、地圖標記與照片清單全覽",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#ff7a45",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
