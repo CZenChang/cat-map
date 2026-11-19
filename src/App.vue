@@ -12,6 +12,8 @@ import {
   importPhotosToDb,
   savePhoto,
 } from './services/db';
+import { getCurrentPosition, reverseGeocode } from './services/geoUtils';
+import { processCapturedImage } from './services/imageUtils';
 
 const activeTab = ref('map'); // 'map' | 'list'
 const photos = ref([]);
@@ -100,8 +102,62 @@ async function handleViewOnMap(photo) {
   mapRef.value?.focusPhoto(photo);
 }
 
-onMounted(() => {
-  loadPhotos().catch(() => notify('讀取本地資料失敗'));
+const SEEDED_KEY = 'cat-map-seeded-v1';
+
+async function seedFirstTimeSampleIfNeeded() {
+  if (photos.value.length > 0 || localStorage.getItem(SEEDED_KEY)) return;
+  localStorage.setItem(SEEDED_KEY, '1');
+
+  try {
+    const res = await fetch('./sample-cat.jpg');
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const { imageBlob, thumbDataUrl } = await processCapturedImage(blob);
+
+    let lat = 25.033964;
+    let lng = 121.564468;
+    try {
+      const pos = await getCurrentPosition({ timeout: 5000 });
+      lat = Number((pos.lat + 0.0005).toFixed(6));
+      lng = Number((pos.lng + 0.0005).toFixed(6));
+    } catch {
+      // Fallback to default center if GPS is unavailable
+    }
+
+    const placeName = (await reverseGeocode(lat, lng)) || '你附近的巷弄（範例地點）';
+    const sampleRecord = {
+      id: 'sample-cat-welcome',
+      name: '巷口小橘貓（範例）',
+      rating: 5,
+      note: '這是一筆自動建立的範例紀錄！你可以點擊「全覽照片」或「編輯」，也可以按下方的「拍照記錄」新增自己的照片。',
+      createdAt: new Date().toISOString(),
+      lat,
+      lng,
+      placeName,
+      imageBlob,
+      thumbDataUrl,
+    };
+
+    await savePhoto(sampleRecord);
+    photos.value.unshift({
+      ...sampleRecord,
+      objectUrl: URL.createObjectURL(sampleRecord.imageBlob),
+    });
+    await nextTick();
+    mapRef.value?.focusPhoto(sampleRecord);
+    notify('已為你在附近建立一筆範例貓咪紀錄！');
+  } catch {
+    // Sample seeding is best-effort
+  }
+}
+
+onMounted(async () => {
+  try {
+    await loadPhotos();
+    await seedFirstTimeSampleIfNeeded();
+  } catch {
+    notify('讀取本地資料失敗');
+  }
 });
 
 onUnmounted(() => {
