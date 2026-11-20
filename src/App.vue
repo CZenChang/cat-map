@@ -283,7 +283,7 @@ onUnmounted(() => {
 
       <button type="button" class="capture-fab" @click="captureRef?.startCapture()">
         <Camera :size="22" />
-        <span>拍照記錄</span>
+        <span>拍照 / 上傳</span>
       </button>
 
       <button

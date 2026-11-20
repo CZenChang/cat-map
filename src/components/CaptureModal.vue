@@ -1,18 +1,20 @@
 <script setup>
 import { nextTick, onUnmounted, ref } from 'vue';
 import L from 'leaflet';
-import { Camera, MapPin, RefreshCw, Star, Trash2, X } from 'lucide-vue-next';
+import { Camera, ImagePlus, MapPin, RefreshCw, Star, Trash2, X } from 'lucide-vue-next';
 import { processCapturedImage } from '../services/imageUtils';
 import { formatDateTime, getCurrentPosition, reverseGeocode } from '../services/geoUtils';
 
 const emit = defineEmits(['save', 'delete', 'notify']);
 
 const dialogRef = ref(null);
-const fileInputRef = ref(null);
+const cameraInputRef = ref(null);
+const uploadInputRef = ref(null);
 const videoRef = ref(null);
 const miniMapRef = ref(null);
 
-const step = ref('form'); // 'webcam' | 'form'
+const step = ref('choose'); // 'choose' | 'webcam' | 'form'
+const captureSource = ref('camera'); // 'camera' | 'upload'
 const isEditing = ref(false);
 const editingId = ref('');
 const confirmDelete = ref(false);
@@ -126,7 +128,22 @@ async function fetchLocation() {
   }
 }
 
-async function handleCapturedBlob(blob) {
+function getLastMapCenter() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('cat-map-last-view') || 'null');
+    if (saved && Number.isFinite(saved.lat) && Number.isFinite(saved.lng)) {
+      return {
+        lat: Number(saved.lat.toFixed(6)),
+        lng: Number(saved.lng.toFixed(6)),
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return { lat: 25.033964, lng: 121.564468 };
+}
+
+async function handleCapturedBlob(blob, source = 'camera') {
   try {
     const processed = await processCapturedImage(blob);
     revokePreview();
@@ -134,37 +151,57 @@ async function handleCapturedBlob(blob) {
     thumbDataUrl.value = processed.thumbDataUrl;
     previewUrl.value = URL.createObjectURL(processed.imageBlob);
 
+    captureSource.value = source;
     createdAt.value = new Date().toISOString();
     name.value = '';
     rating.value = 5;
     note.value = '';
     placeName.value = '';
+
+    const center = getLastMapCenter();
+    lat.value = center.lat;
+    lng.value = center.lng;
+
     step.value = 'form';
 
     if (!dialogRef.value?.open) {
       dialogRef.value?.showModal();
     }
     await initMiniMap();
-    fetchLocation();
+
+    if (source === 'camera') {
+      fetchLocation();
+    } else {
+      reverseGeocode(lat.value, lng.value).then((resolved) => {
+        if (resolved) placeName.value = resolved;
+      });
+    }
   } catch (err) {
     emit('notify', err.message || '處理照片失敗');
   }
 }
 
-async function startCapture() {
+function startCapture() {
   isEditing.value = false;
   editingId.value = '';
+  confirmDelete.value = false;
+  webcamError.value = '';
+  step.value = 'choose';
+  if (!dialogRef.value?.open) {
+    dialogRef.value?.showModal();
+  }
+}
 
+async function chooseCamera() {
   if (isMobileDevice()) {
-    fileInputRef.value.value = '';
-    fileInputRef.value.click();
+    dialogRef.value?.close();
+    cameraInputRef.value.value = '';
+    cameraInputRef.value.click();
     return;
   }
 
-  // Desktop live webcam capture (prevents picking from album)
   step.value = 'webcam';
   webcamError.value = '';
-  dialogRef.value?.showModal();
 
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -176,8 +213,13 @@ async function startCapture() {
       videoRef.value.srcObject = mediaStream;
     }
   } catch {
-    webcamError.value = '無法開啟電腦攝影機（請確認權限或是否有連接鏡頭）。';
+    webcamError.value = '無法開啟電腦攝影機（請確認權限或是否有連接鏡頭），也可以改用「上傳照片」。';
   }
+}
+
+function chooseUpload() {
+  uploadInputRef.value.value = '';
+  uploadInputRef.value.click();
 }
 
 function snapFromWebcam() {
@@ -190,17 +232,23 @@ function snapFromWebcam() {
   canvas.toBlob(
     (blob) => {
       stopWebcam();
-      if (blob) handleCapturedBlob(blob);
+      if (blob) handleCapturedBlob(blob, 'camera');
     },
     'image/jpeg',
     0.92
   );
 }
 
-function onMobileFileChange(event) {
+function onCameraFileChange(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-  handleCapturedBlob(file);
+  handleCapturedBlob(file, 'camera');
+}
+
+function onUploadFileChange(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  handleCapturedBlob(file, 'upload');
 }
 
 async function openEdit(photo) {
@@ -279,16 +327,27 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- Mobile native camera only (no album selection) -->
+  <!-- Mobile native camera -->
   <input
-    ref="fileInputRef"
+    ref="cameraInputRef"
     type="file"
     accept="image/*"
     capture="environment"
     class="sr-only"
     aria-hidden="true"
     tabindex="-1"
-    @change="onMobileFileChange"
+    @change="onCameraFileChange"
+  />
+
+  <!-- Photo album / file upload -->
+  <input
+    ref="uploadInputRef"
+    type="file"
+    accept="image/*"
+    class="sr-only"
+    aria-hidden="true"
+    tabindex="-1"
+    @change="onUploadFileChange"
   />
 
   <dialog
@@ -301,19 +360,50 @@ onUnmounted(() => {
     <div class="modal-sheet">
       <header class="modal-header">
         <h2 id="capture-dialog-title" class="modal-title">
-          {{ step === 'webcam' ? '即時拍照' : isEditing ? '編輯照片紀錄' : '新增照片紀錄' }}
+          {{
+            step === 'choose'
+              ? '新增照片'
+              : step === 'webcam'
+                ? '即時拍照'
+                : isEditing
+                  ? '編輯照片紀錄'
+                  : '新增照片紀錄'
+          }}
         </h2>
         <button type="button" class="close-btn" aria-label="關閉視窗" @click="closeModal">
           <X :size="20" />
         </button>
       </header>
 
-      <div v-if="step === 'webcam'" class="webcam-body">
+      <div v-if="step === 'choose'" class="choose-body">
+        <button type="button" class="choose-card" autofocus @click="chooseCamera">
+          <span class="choose-icon choose-icon-camera">
+            <Camera :size="26" />
+          </span>
+          <span class="choose-text">
+            <strong>即時拍照</strong>
+            <small>現場拍攝並自動抓取目前 GPS 位置</small>
+          </span>
+        </button>
+
+        <button type="button" class="choose-card" @click="chooseUpload">
+          <span class="choose-icon choose-icon-upload">
+            <ImagePlus :size="26" />
+          </span>
+          <span class="choose-text">
+            <strong>上傳照片</strong>
+            <small>從相簿或電腦挑選照片，並在地圖上手選地點</small>
+          </span>
+        </button>
+      </div>
+
+      <div v-else-if="step === 'webcam'" class="webcam-body">
         <div v-if="webcamError" class="webcam-error">
           <p>{{ webcamError }}</p>
         </div>
         <video v-else ref="videoRef" autoplay playsinline muted class="webcam-video"></video>
         <div class="webcam-actions">
+          <button type="button" class="btn-secondary" @click="chooseUpload">改用上傳照片</button>
           <button
             v-if="!webcamError"
             type="button"
@@ -379,7 +469,11 @@ onUnmounted(() => {
           <div class="location-header">
             <span class="field-label">
               <MapPin :size="14" />
-              拍攝地點（可拖曳或點擊地圖微調）
+              {{
+                captureSource === 'upload' && !isEditing
+                  ? '拍攝地點（請點擊或拖曳地圖圖釘手選）'
+                  : '拍攝地點（可拖曳或點擊地圖微調）'
+              }}
             </span>
             <button
               type="button"
@@ -388,7 +482,7 @@ onUnmounted(() => {
               @click="fetchLocation"
             >
               <RefreshCw :size="13" :class="{ spinning: locating }" />
-              重新抓取 GPS
+              {{ captureSource === 'upload' ? '定位目前 GPS' : '重新抓取 GPS' }}
             </button>
           </div>
           <p class="place-text">
@@ -469,6 +563,68 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
+.choose-body {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.choose-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.choose-card:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.choose-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.choose-icon-camera {
+  background: var(--primary);
+  color: #fff;
+}
+
+.choose-icon-upload {
+  background: #0f172a;
+  color: #fff;
+}
+
+.choose-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.choose-text strong {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.choose-text small {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
 .webcam-body {
   padding: 16px;
   display: flex;
@@ -495,6 +651,7 @@ onUnmounted(() => {
 .webcam-actions {
   display: flex;
   justify-content: center;
+  gap: 10px;
 }
 
 .btn-snap {
@@ -619,7 +776,7 @@ onUnmounted(() => {
 
 .mini-map {
   width: 100%;
-  height: 160px;
+  height: 200px;
   border-radius: 12px;
   border: 1px solid var(--border);
   overflow: hidden;
